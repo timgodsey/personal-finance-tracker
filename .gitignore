@@ -1,0 +1,12 @@
+# Environment Variables
+.env
+
+# Database
+finances.db
+
+# Sensitive files
+token.json
+credentials.json
+
+# Python
+__pycache__/

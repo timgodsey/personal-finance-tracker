@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Godsey Fabrications - AI Finance Review</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gray: { 900: '#111827', 800: '#1f2937', 700: '#374151' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-900 text-gray-100 p-4 sm:p-8 font-sans">
+    <div class="max-w-5xl mx-auto">
+        
+        <header class="mb-10 border-b border-gray-700 pb-4">
+            <h1 class="text-3xl font-bold tracking-tight text-white">Transaction Review Queue</h1>
+            <p class="text-gray-400 mt-2">Godsey Fabrications Automated Processing</p>
+        </header>
+
+        <div id="receipt-container" class="space-y-6">
+            <p id="loading-text" class="text-gray-400 animate-pulse">Fetching AI categorizations...</p>
+        </div>
+
+    </div>
+
+    <script>
+        // Fetch pending transactions from FastAPI
+        async function loadPendingReceipts() {
+            const response = await fetch('/api/pending');
+            const data = await response.json();
+            const container = document.getElementById('receipt-container');
+            
+            container.innerHTML = ''; // Clear loading text
+
+            if (data.length === 0) {
+                container.innerHTML = '<div class="p-6 bg-gray-800 rounded-lg text-center text-green-400">All caught up! No pending transactions.</div>';
+                return;
+            }
+
+            // Group by Month/Year
+            const groups = {};
+            data.forEach(receipt => {
+                let d = new Date(receipt.date);
+                if (isNaN(d.getTime())) d = new Date(); // Fallback
+                
+                const monthYear = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                if (!groups[monthYear]) {
+                    groups[monthYear] = { receipts: [], total: 0 };
+                }
+                groups[monthYear].receipts.push(receipt);
+            });
+
+            // Render groups
+            for (const [monthYear, group] of Object.entries(groups)) {
+                const folder = document.createElement('div');
+                folder.className = "mb-8 bg-gray-900 border border-gray-700/50 rounded-xl overflow-hidden";
+                
+                // Folder Header
+                const header = document.createElement('div');
+                header.className = "bg-gray-800 p-4 font-semibold text-lg flex justify-between items-center cursor-pointer hover:bg-gray-700 transition-colors";
+                
+                header.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                        ${monthYear}
+                    </div>
+                    <div class="flex items-center gap-4 text-sm text-gray-400 font-normal">
+                        <span>${group.receipts.length} items</span>
+                        <svg id="chevron-${monthYear.replace(/\\s+/g, '-')}" style="transition: transform 0.2s; transform: rotate(180deg)" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </div>
+                `;
+
+                const content = document.createElement('div');
+                content.className = "p-4 sm:p-6 space-y-6";
+                const chevron = header.querySelector('svg:last-child');
+                
+                header.onclick = () => {
+                    content.classList.toggle('hidden');
+                    chevron.style.transform = content.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
+                };
+
+                // Build cards inside content
+                group.receipts.forEach(receipt => {
+                    const card = document.createElement('div');
+                    card.className = "bg-gray-800 border border-gray-700 rounded-lg p-4 sm:p-6 shadow-sm flex flex-col md:flex-row gap-6 items-start transition-all duration-200";
+                    card.id = `receipt-${receipt.id}`;
+                    
+                    // Color code the AI's suggestion
+                    let badgeColor = "bg-yellow-500/20 text-yellow-400"; // Maybe Business
+                    if (receipt.ai_category === "Definitely Business") badgeColor = "bg-blue-500/20 text-blue-400";
+                    if (receipt.ai_category === "Definitely Personal") badgeColor = "bg-red-500/20 text-red-400";
+
+                    let amountDisplay = receipt.amount && receipt.amount !== 'Unknown' ? `<span class="bg-green-500/20 text-green-400 px-2.5 py-0.5 rounded text-sm font-semibold border border-green-700/50 mr-2">${receipt.amount}</span>` : '';
+
+                    card.innerHTML = `
+                        <div class="flex-1 w-full">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-sm font-medium text-gray-400">${receipt.date}</span>
+                                <span class="px-2.5 py-0.5 rounded text-xs font-medium border border-gray-700 ${badgeColor}">
+                                    AI: ${receipt.ai_category}
+                                </span>
+                            </div>
+                            <h3 class="text-lg font-semibold text-white mb-2">${amountDisplay}${receipt.subject}</h3>
+                            <p class="text-gray-400 text-sm mb-4 line-clamp-2">${receipt.snippet}</p>
+                            
+                            <div class="bg-gray-900 rounded p-3 text-sm text-gray-300 border border-gray-700">
+                                <strong>AI Logic:</strong> ${receipt.ai_justification}
+                            </div>
+                        </div>
+
+                        <div class="w-full md:w-72 flex flex-col gap-3 bg-gray-900 p-4 rounded-lg border border-gray-700">
+                            <label class="text-sm text-gray-400 font-medium">Final Categorization</label>
+                            <select id="cat-${receipt.id}" class="bg-gray-800 border border-gray-600 text-white text-base rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3.5 sm:p-2.5">
+                                <option value="Business" ${receipt.ai_category.includes('Business') ? 'selected' : ''}>Business Expense</option>
+                                <option value="Personal" ${receipt.ai_category.includes('Personal') ? 'selected' : ''}>Personal</option>
+                                <option value="Split">Split / Unknown</option>
+                            </select>
+                            
+                            <input type="text" id="notes-${receipt.id}" placeholder="Optional notes..." class="bg-gray-800 border border-gray-600 text-white text-base rounded-lg block w-full p-3.5 sm:p-2.5 mt-1 focus:ring-blue-500 focus:border-blue-500">
+                            
+                            <button onclick="approveReceipt(${receipt.id})" class="mt-2 w-full text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-800 font-semibold rounded-lg text-base px-5 py-3 sm:py-2.5 focus:outline-none transition-colors">
+                                Approve & Save
+                            </button>
+                        </div>
+                    `;
+                    content.appendChild(card);
+                });
+
+                folder.appendChild(header);
+                folder.appendChild(content);
+                container.appendChild(folder);
+            }
+        }
+
+        // Send the user's decision back to Python
+        async function approveReceipt(id) {
+            const finalCategory = document.getElementById(`cat-${id}`).value;
+            const notes = document.getElementById(`notes-${id}`).value;
+            const card = document.getElementById(`receipt-${id}`);
+
+            // Visual feedback before API call
+            card.style.opacity = '0.5';
+
+            const response = await fetch('/api/approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, final_category: finalCategory, notes: notes })
+            });
+
+            if (response.ok) {
+                // Slide the card out of view
+                card.style.transform = 'translateX(20px)';
+                card.style.opacity = '0';
+                setTimeout(() => {
+                    const cardParent = card.parentElement;
+                    card.remove();
+                    if (cardParent.querySelectorAll('[id^="receipt-"]').length === 0) {
+                        const folder = cardParent.parentElement;
+                        folder.remove();
+                    }
+                    if (document.querySelectorAll('[id^="receipt-"]').length === 0) {
+                        loadPendingReceipts();
+                    }
+                }, 300);
+            } else {
+                alert("Error saving transaction.");
+                card.style.opacity = '1';
+            }
+        }
+
+        // Load data on start
+        window.onload = loadPendingReceipts;
+    </script>
+</body>
+</html>

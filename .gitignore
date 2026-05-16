@@ -10,3 +10,8 @@ credentials.json
 
 # Python
 __pycache__/
+
+# Plaid Cache/Historical
+plaid_cache.json
+plaid_historical.json
+plaid_historical_processed.json

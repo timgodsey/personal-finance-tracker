@@ -11,71 +11,130 @@
             theme: {
                 extend: {
                     colors: {
-                        gray: { 900: '#111827', 800: '#1f2937', 700: '#374151' }
+                        gray: { 900: '#111827', 800: '#1f2937', 700: '#374151', 600: '#4b5563' }
                     }
                 }
             }
         }
     </script>
+    <style>
+        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
+        .tab-inactive { color: #9ca3af; border-bottom: 2px solid transparent; }
+        .tab-inactive:hover { color: #d1d5db; border-color: #4b5563; }
+    </style>
 </head>
 <body class="bg-gray-900 text-gray-100 p-4 sm:p-8 font-sans">
     <div class="max-w-5xl mx-auto">
         
-        <header class="mb-10 border-b border-gray-700 pb-4">
-            <h1 class="text-3xl font-bold tracking-tight text-white">Transaction Review Queue</h1>
-            <p class="text-gray-400 mt-2">Godsey Fabrications Automated Processing</p>
+        <header class="mb-8 border-b border-gray-700 pb-4 flex justify-between items-end flex-wrap gap-4">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight text-white">Transaction Review Queue</h1>
+                <p class="text-gray-400 mt-2">Godsey Fabrications Automated Processing</p>
+            </div>
+            <button id="audit-btn" onclick="triggerAudit()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors focus:ring-4 focus:ring-indigo-800">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Run One-Time Audit
+            </button>
         </header>
 
-        <div id="receipt-container" class="space-y-6">
-            <p id="loading-text" class="text-gray-400 animate-pulse">Fetching AI categorizations...</p>
+        <!-- Tabs -->
+        <div class="flex border-b border-gray-700 mb-6">
+            <button onclick="switchTab('transactions')" id="tab-transactions" class="tab-active py-2 px-4 text-sm font-medium transition-colors mb-[-1px]">
+                Bank Transactions
+            </button>
+            <button onclick="switchTab('receipts')" id="tab-receipts" class="tab-inactive py-2 px-4 text-sm font-medium transition-colors mb-[-1px]">
+                Email Receipts
+            </button>
+        </div>
+
+        <!-- Containers -->
+        <div id="transactions-container" class="space-y-6">
+            <p class="text-gray-400 animate-pulse">Fetching AI categorizations...</p>
+        </div>
+        
+        <div id="receipts-container" class="space-y-6 hidden">
+            <p class="text-gray-400 animate-pulse">Fetching AI categorizations...</p>
         </div>
 
     </div>
 
     <script>
-        // Fetch pending transactions from FastAPI
-        async function loadPendingReceipts() {
-            const response = await fetch('/api/pending');
-            const data = await response.json();
-            const container = document.getElementById('receipt-container');
+        let currentTab = 'transactions';
+
+        function switchTab(tabId) {
+            currentTab = tabId;
+            document.getElementById('tab-transactions').className = tabId === 'transactions' ? 'tab-active py-2 px-4 text-sm font-medium transition-colors mb-[-1px]' : 'tab-inactive py-2 px-4 text-sm font-medium transition-colors mb-[-1px]';
+            document.getElementById('tab-receipts').className = tabId === 'receipts' ? 'tab-active py-2 px-4 text-sm font-medium transition-colors mb-[-1px]' : 'tab-inactive py-2 px-4 text-sm font-medium transition-colors mb-[-1px]';
             
-            container.innerHTML = ''; // Clear loading text
+            document.getElementById('transactions-container').classList.toggle('hidden', tabId !== 'transactions');
+            document.getElementById('receipts-container').classList.toggle('hidden', tabId !== 'receipts');
+            
+            if (tabId === 'transactions') loadPendingTransactions();
+            if (tabId === 'receipts') loadPendingReceipts();
+        }
+
+        async function triggerAudit() {
+            const btn = document.getElementById('audit-btn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Audit Running...';
+            btn.disabled = true;
+            btn.classList.add('opacity-75', 'cursor-not-allowed');
+
+            try {
+                const res = await fetch('/api/audit', { method: 'POST' });
+                const data = await res.json();
+                alert(data.status); // Notifies user to check terminal
+            } catch (e) {
+                alert("Failed to start audit");
+            }
+
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            btn.classList.remove('opacity-75', 'cursor-not-allowed');
+        }
+
+        function getBadgeColor(category) {
+            if (!category) return "bg-gray-500/20 text-gray-400";
+            if (category.includes("Definitely Business")) return "bg-blue-500/20 text-blue-400";
+            if (category.includes("Definitely Personal")) return "bg-red-500/20 text-red-400";
+            return "bg-yellow-500/20 text-yellow-400"; // Maybe Business
+        }
+
+        function renderGroupedData(data, containerId, type) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = ''; 
 
             if (data.length === 0) {
-                container.innerHTML = '<div class="p-6 bg-gray-800 rounded-lg text-center text-green-400">All caught up! No pending transactions.</div>';
+                container.innerHTML = '<div class="p-6 bg-gray-800 rounded-lg text-center text-green-400">All caught up! No pending items.</div>';
                 return;
             }
 
-            // Group by Month/Year
             const groups = {};
-            data.forEach(receipt => {
-                let d = new Date(receipt.date);
-                if (isNaN(d.getTime())) d = new Date(); // Fallback
+            data.forEach(item => {
+                let d = new Date(item.date);
+                if (isNaN(d.getTime())) d = new Date(); 
                 
                 const monthYear = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
                 if (!groups[monthYear]) {
-                    groups[monthYear] = { receipts: [], total: 0 };
+                    groups[monthYear] = { items: [] };
                 }
-                groups[monthYear].receipts.push(receipt);
+                groups[monthYear].items.push(item);
             });
 
-            // Render groups
             for (const [monthYear, group] of Object.entries(groups)) {
                 const folder = document.createElement('div');
                 folder.className = "mb-8 bg-gray-900 border border-gray-700/50 rounded-xl overflow-hidden";
                 
-                // Folder Header
                 const header = document.createElement('div');
                 header.className = "bg-gray-800 p-4 font-semibold text-lg flex justify-between items-center cursor-pointer hover:bg-gray-700 transition-colors";
-                
                 header.innerHTML = `
                     <div class="flex items-center gap-3">
                         <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
                         ${monthYear}
                     </div>
                     <div class="flex items-center gap-4 text-sm text-gray-400 font-normal">
-                        <span>${group.receipts.length} items</span>
-                        <svg id="chevron-${monthYear.replace(/\\s+/g, '-')}" style="transition: transform 0.2s; transform: rotate(180deg)" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        <span>${group.items.length} items</span>
+                        <svg style="transition: transform 0.2s; transform: rotate(180deg)" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                     </div>
                 `;
 
@@ -88,46 +147,55 @@
                     chevron.style.transform = content.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
                 };
 
-                // Build cards inside content
-                group.receipts.forEach(receipt => {
+                group.items.forEach(item => {
                     const card = document.createElement('div');
                     card.className = "bg-gray-800 border border-gray-700 rounded-lg p-4 sm:p-6 shadow-sm flex flex-col md:flex-row gap-6 items-start transition-all duration-200";
-                    card.id = `receipt-${receipt.id}`;
+                    card.id = `${type}-${item.id}`;
                     
-                    // Color code the AI's suggestion
-                    let badgeColor = "bg-yellow-500/20 text-yellow-400"; // Maybe Business
-                    if (receipt.ai_category === "Definitely Business") badgeColor = "bg-blue-500/20 text-blue-400";
-                    if (receipt.ai_category === "Definitely Personal") badgeColor = "bg-red-500/20 text-red-400";
-
-                    let amountDisplay = receipt.amount && receipt.amount !== 'Unknown' ? `<span class="bg-green-500/20 text-green-400 px-2.5 py-0.5 rounded text-sm font-semibold border border-green-700/50 mr-2">${receipt.amount}</span>` : '';
+                    const badgeColor = getBadgeColor(item.ai_category);
+                    const amountDisplay = item.amount && item.amount !== 'Unknown' ? `<span class="bg-green-500/20 text-green-400 px-2.5 py-0.5 rounded text-sm font-semibold border border-green-700/50 mr-2">${item.amount}</span>` : '';
+                    
+                    const title = type === 'receipt' ? item.subject : item.name;
+                    const snippet = type === 'receipt' ? item.snippet : '';
+                    const matchedHTML = (type === 'transaction' && item.matched_receipt) ? `
+                        <div class="mt-4 bg-indigo-900/30 border border-indigo-500/30 rounded p-3 text-sm">
+                            <div class="flex items-center gap-2 text-indigo-300 font-semibold mb-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                                Matched Email Receipt Found!
+                            </div>
+                            <div class="text-gray-300">Subject: ${item.matched_receipt.subject}</div>
+                            <div class="text-gray-400 text-xs mt-1">Amount: ${item.matched_receipt.amount} | Date: ${item.matched_receipt.date}</div>
+                        </div>
+                    ` : '';
 
                     card.innerHTML = `
                         <div class="flex-1 w-full">
                             <div class="flex justify-between items-start mb-2">
-                                <span class="text-sm font-medium text-gray-400">${receipt.date}</span>
+                                <span class="text-sm font-medium text-gray-400">${item.date || 'No date'}</span>
                                 <span class="px-2.5 py-0.5 rounded text-xs font-medium border border-gray-700 ${badgeColor}">
-                                    AI: ${receipt.ai_category}
+                                    AI: ${item.ai_category || 'Unknown'}
                                 </span>
                             </div>
-                            <h3 class="text-lg font-semibold text-white mb-2">${amountDisplay}${receipt.subject}</h3>
-                            <p class="text-gray-400 text-sm mb-4 line-clamp-2">${receipt.snippet}</p>
+                            <h3 class="text-lg font-semibold text-white mb-2">${amountDisplay}${title}</h3>
+                            ${snippet ? `<p class="text-gray-400 text-sm mb-4 line-clamp-2">${snippet}</p>` : ''}
                             
                             <div class="bg-gray-900 rounded p-3 text-sm text-gray-300 border border-gray-700">
-                                <strong>AI Logic:</strong> ${receipt.ai_justification}
+                                <strong>AI Logic:</strong> ${item.ai_justification || 'None'}
                             </div>
+                            ${matchedHTML}
                         </div>
 
                         <div class="w-full md:w-72 flex flex-col gap-3 bg-gray-900 p-4 rounded-lg border border-gray-700">
                             <label class="text-sm text-gray-400 font-medium">Final Categorization</label>
-                            <select id="cat-${receipt.id}" class="bg-gray-800 border border-gray-600 text-white text-base rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3.5 sm:p-2.5">
-                                <option value="Business" ${receipt.ai_category.includes('Business') ? 'selected' : ''}>Business Expense</option>
-                                <option value="Personal" ${receipt.ai_category.includes('Personal') ? 'selected' : ''}>Personal</option>
+                            <select id="cat-${type}-${item.id}" class="bg-gray-800 border border-gray-600 text-white text-base rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-3.5 sm:p-2.5">
+                                <option value="Business" ${(item.ai_category || '').includes('Business') ? 'selected' : ''}>Business Expense</option>
+                                <option value="Personal" ${(item.ai_category || '').includes('Personal') ? 'selected' : ''}>Personal</option>
                                 <option value="Split">Split / Unknown</option>
                             </select>
                             
-                            <input type="text" id="notes-${receipt.id}" placeholder="Optional notes..." class="bg-gray-800 border border-gray-600 text-white text-base rounded-lg block w-full p-3.5 sm:p-2.5 mt-1 focus:ring-blue-500 focus:border-blue-500">
+                            <input type="text" id="notes-${type}-${item.id}" placeholder="Optional notes..." class="bg-gray-800 border border-gray-600 text-white text-base rounded-lg block w-full p-3.5 sm:p-2.5 mt-1 focus:ring-blue-500 focus:border-blue-500">
                             
-                            <button onclick="approveReceipt(${receipt.id})" class="mt-2 w-full text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-800 font-semibold rounded-lg text-base px-5 py-3 sm:py-2.5 focus:outline-none transition-colors">
+                            <button onclick="approveItem('${type}', ${item.id})" class="mt-2 w-full text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-800 font-semibold rounded-lg text-base px-5 py-3 sm:py-2.5 focus:outline-none transition-colors">
                                 Approve & Save
                             </button>
                         </div>
@@ -141,44 +209,65 @@
             }
         }
 
-        // Send the user's decision back to Python
-        async function approveReceipt(id) {
-            const finalCategory = document.getElementById(`cat-${id}`).value;
-            const notes = document.getElementById(`notes-${id}`).value;
-            const card = document.getElementById(`receipt-${id}`);
+        async function loadPendingReceipts() {
+            try {
+                const response = await fetch('/api/pending');
+                const data = await response.json();
+                renderGroupedData(data, 'receipts-container', 'receipt');
+            } catch (e) {
+                console.error(e);
+            }
+        }
 
-            // Visual feedback before API call
+        async function loadPendingTransactions() {
+            try {
+                const response = await fetch('/api/pending_transactions');
+                const data = await response.json();
+                renderGroupedData(data, 'transactions-container', 'transaction');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function approveItem(type, id) {
+            const finalCategory = document.getElementById(`cat-${type}-${id}`).value;
+            const notes = document.getElementById(`notes-${type}-${id}`).value;
+            const card = document.getElementById(`${type}-${id}`);
+
             card.style.opacity = '0.5';
 
-            const response = await fetch('/api/approve', {
+            const endpoint = type === 'receipt' ? '/api/approve' : '/api/approve_transaction';
+            
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: id, final_category: finalCategory, notes: notes })
             });
 
             if (response.ok) {
-                // Slide the card out of view
                 card.style.transform = 'translateX(20px)';
                 card.style.opacity = '0';
                 setTimeout(() => {
                     const cardParent = card.parentElement;
                     card.remove();
-                    if (cardParent.querySelectorAll('[id^="receipt-"]').length === 0) {
+                    // Check if folder is empty
+                    if (cardParent.querySelectorAll(`[id^="${type}-"]`).length === 0) {
                         const folder = cardParent.parentElement;
                         folder.remove();
                     }
-                    if (document.querySelectorAll('[id^="receipt-"]').length === 0) {
-                        loadPendingReceipts();
+                    // Check if all are empty
+                    if (document.querySelectorAll(`[id^="${type}-"]`).length === 0) {
+                        if (type === 'receipt') loadPendingReceipts();
+                        else loadPendingTransactions();
                     }
                 }, 300);
             } else {
-                alert("Error saving transaction.");
+                alert("Error saving " + type + ".");
                 card.style.opacity = '1';
             }
         }
 
-        // Load data on start
-        window.onload = loadPendingReceipts;
+        window.onload = loadPendingTransactions;
     </script>
 </body>
 </html>

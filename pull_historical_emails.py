@@ -9,8 +9,8 @@ from openai import OpenAI
 
 # --- CONFIGURATION ---
 client = OpenAI(
-    base_url="http://100.119.170.3:3000/api", 
-    api_key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjljYWE1ZDhjLWEzYTMtNGQxMy04MjIyLTk0YTZiMzBmMDk4OSIsImV4cCI6MTc3OTM0MzI3MSwianRpIjoiNTA2N2RjYjMtNjEwMy00NmI0LWFmYTYtNjZhYTg4MWE3YTk2In0.Y6cDvIfNX8du6Fdmylbjwg2gBcQMQkTBFnfzqpFhjMg"
+    base_url="http://localhost:11434/v1", 
+    api_key="ollama" # api_key is required by the client but ignored by ollama
 )
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -45,17 +45,18 @@ def get_gmail_service():
     return build('gmail', 'v1', credentials=creds)
 
 def main():
-    print("🗄️  Setting up database...")
+    print("️  Setting up database...")
     db_conn = setup_database()
     cursor = db_conn.cursor()
 
-    print("📧 Connecting to Gmail...")
+    print(" Connecting to Gmail...")
     service = get_gmail_service()
     
-    # Query for historical emails: Jan 1, 2026 to May 4, 2026 (exclusive)
-    query = "(receipt OR invoice OR 'order confirmation' OR 'amazon order' OR from:amazon) after:2026/01/01 before:2026/05/04"
+    # Query for historical emails: Jan 1, 2026 to present
+    today_str = datetime.now().strftime("%Y/%m/%d")
+    query = f"(receipt OR invoice OR 'order confirmation' OR 'amazon order' OR from:amazon) after:2026/01/01 before:{today_str}"
     
-    print(f"🔍 Searching Gmail with query: {query}")
+    print(f" Searching Gmail with query: {query}")
     
     messages = []
     request = service.users().messages().list(userId='me', q=query)
@@ -69,7 +70,7 @@ def main():
         print("No receipts found.")
         return
 
-    print(f"📥 Found {len(messages)} historical receipts to process. This might take a while!")
+    print(f" Found {len(messages)} historical receipts to process. This might take a while!")
     print("-" * 50)
 
     for i, message in enumerate(messages):
@@ -99,14 +100,14 @@ def main():
         # Check if already in DB to avoid duplicates on re-runs
         cursor.execute("SELECT id FROM receipts WHERE subject = ? AND date = ?", (subject, date))
         if cursor.fetchone():
-            print("   ⏩ Already in database, skipping...")
+            print("    Already in database, skipping...")
             continue
 
-        print("   🧠 Asking Qwen to categorize...")
+        print("    Asking Qwen to categorize...")
 
         try:
             completion = client.chat.completions.create(
-                model="qwen2.5:7b",
+                model="qwen3:8b",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Subject: {subject}\nBody: {snippet}"}
@@ -122,7 +123,7 @@ def main():
             justification = ai_data.get('justification', 'Error parsing')
             amount = ai_data.get('amount', 'Unknown')
             
-            print(f"   ↳ Result: {category} | Amount: {amount}")
+            print(f"   -> Result: {category} | Amount: {amount}")
 
             # Save to Database
             cursor.execute('''
@@ -130,13 +131,13 @@ def main():
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (date, subject, snippet, category, justification, amount))
             db_conn.commit()
-            print("   💾 Saved to finances.db")
+            print("    Saved to finances.db")
 
         except Exception as e:
-            print(f"   ❌ Failed to process: {e}")
+            print(f"    Failed to process: {e}")
 
     db_conn.close()
-    print("\n✅ Historical email pipeline complete!")
+    print("\n Historical email pipeline complete!")
 
 if __name__ == '__main__':
     main()
